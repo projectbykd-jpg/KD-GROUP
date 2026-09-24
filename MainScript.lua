@@ -1,14 +1,23 @@
--- ==========================================
--- KD GROUP - AUTO SPAM (TEST 1)
--- ==========================================
-local textSpam = "Jual Script GTPS Terpercaya hanya di KD Group!"
-local delaySpam = 3500 -- Delay 3.5 detik (3500 ms) agar aman dari auto-mute
-
--- Menampilkan pesan di console executor saat script jalan
-LogToConsole("`2[KD Group] `9Script Auto Spam Aktif!")
-
--- Looping tanpa batas untuk mengirim chat
-while true do
-    SendPacket(2, "action|input\n|text|" .. textSpam)
-    Sleep(delaySpam)
-end
+if selectedScript == "AUTO SPAM" then
+        ImGui.Text("Spam Text:")
+        -- ImGui.InputText("##spamteks", "Beli di KD Group!")
+        
+        ImGui.Spacing()
+        -- Saat tombol ditekan, dia menarik file AutoSpam.lua dari GitHub
+        if ImGui.Button("▶ START SPAM", 150, 30) then
+            LogToConsole("`2[KD Group] `9Mengunduh modul Auto Spam...")
+            local scriptUrl = "https://raw.githubusercontent.com/projectbykd-jpg/KD-GROUP/main/Scripts/AutoSpam.lua"
+            load(MakeRequest(scriptUrl, "GET").content)()
+        end
+        
+    elseif selectedScript == "AUTO BFG" then
+        ImGui.Text("Pengaturan Block:")
+        
+        ImGui.Spacing()
+        -- Saat tombol ditekan, dia menarik file AutoBFG.lua dari GitHub
+        if ImGui.Button("▶ START BFG", 150, 30) then
+            LogToConsole("`2[KD Group] `9Mengunduh modul Auto BFG...")
+            local scriptUrl = "https://raw.githubusercontent.com/projectbykd-jpg/KD-GROUP/main/Scripts/AutoBFG.lua"
+            load(MakeRequest(scriptUrl, "GET").content)()
+        end
+    end
