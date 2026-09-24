@@ -1,16 +1,16 @@
 -- ========================================================
--- PROJECT BY KD - SCRIPT HUB (AUTO-POS, AUTO-DC & HUD BUTTON)
+-- PROJECT BY KD - SCRIPT HUB (FIXED AUTO-WALK & POS GUARD)
 -- ========================================================
 
--- Variabel Konfigurasi & Status
+-- Variabel Status & Konfigurasi Global
 _G.KD_SpamRunning = false
 _G.KD_SpamText = _G.KD_SpamText or "Beli Script Premium di KD Group!"
 _G.KD_SpamDelay = _G.KD_SpamDelay or 3500
 _G.KD_TargetWorld = _G.KD_TargetWorld or ""
-_G.KD_TargetX = _G.KD_TargetX or 0
-_G.KD_TargetY = _G.KD_TargetY or 0
+_G.KD_TargetX = _G.KD_TargetX or nil
+_G.KD_TargetY = _G.KD_TargetY or nil
 
--- 1. Helper: Pembaca Nilai Dialog
+-- 1. Helper Pembaca Data Dialog
 function GetValue(packet, key)
     for line in packet:gmatch("[^\r\n]+") do
         local k, v = line:match("^([^|]+)|(.*)$")
@@ -19,23 +19,42 @@ function GetValue(packet, key)
     return nil
 end
 
--- 2. Helper: Pembaca Koordinat & World
+-- 2. Helper Pembaca Koordinat Akurat Bothax
 function GetCurrentPos()
-    local me = GetLocal()
+    local me = (type(GetLocal) == "function" and GetLocal()) or (type(getLocal) == "function" and getLocal())
     if not me then return 0, 0 end
-    local x = me.tile_x or (me.pos_x and math.floor(me.pos_x / 32)) or (me.x and math.floor(me.x / 32)) or 0
-    local y = me.tile_y or (me.pos_y and math.floor(me.pos_y / 32)) or (me.y and math.floor(me.y / 32)) or 0
-    return x, y
+
+    -- Cek format Tile langsung
+    if me.tile_x and me.tile_y then return me.tile_x, me.tile_y end
+    if me.tileX and me.tileY then return me.tileX, me.tileY end
+
+    -- Cek format Vektor Objek (Standar Bothax Android)
+    local rawX, rawY = nil, nil
+    if type(me.pos) == "userdata" or type(me.pos) == "table" then
+        rawX, rawY = me.pos.x, me.pos.y
+    elseif me.pos_x and me.pos_y then
+        rawX, rawY = me.pos_x, me.pos_y
+    elseif me.x and me.y then
+        rawX, rawY = me.x, me.y
+    end
+
+    if rawX and rawY then
+        return math.floor(rawX / 32), math.floor(rawY / 32)
+    end
+
+    return 0, 0
 end
 
+-- 3. Helper Pembaca Nama World
 function GetCurrentWorldName()
-    if GetWorld and GetWorld() and GetWorld().name then
-        return GetWorld().name
+    local w = (type(GetWorld) == "function" and GetWorld()) or (type(getWorld) == "function" and getWorld())
+    if w and w.name and w.name ~= "" then
+        return w.name
     end
     return _G.KD_TargetWorld or ""
 end
 
--- 3. Helper: Delay & Pathfind Aman (Anti-Crash Bothax)
+-- 4. Helper Delay & Navigasi Berjalan (Dukungan Huruf Kecil & Besar)
 function SafeSleep(ms)
     if type(sleep) == "function" then
         sleep(ms)
@@ -44,15 +63,19 @@ function SafeSleep(ms)
     end
 end
 
-function SafeMove(x, y)
-    if type(FindPath) == "function" then
-        FindPath(x, y)
+function SafeMove(tx, ty)
+    if type(findPath) == "function" then
+        findPath(tx, ty)
+    elseif type(FindPath) == "function" then
+        FindPath(tx, ty)
+    elseif type(move) == "function" then
+        move(tx, ty)
     elseif type(Move) == "function" then
-        Move(x, y)
+        Move(tx, ty)
     end
 end
 
--- 4. TAMPILAN MENU UTAMA
+-- 5. TAMPILAN MENU UTAMA
 function ShowMainMenu()
     local statusSpam = _G.KD_SpamRunning and "[AKTIF]" or "[OFF]"
 
@@ -74,16 +97,17 @@ function ShowMainMenu()
     SendVariantList({[0] = "OnDialogRequest", [1] = d, netid = -1})
 end
 
--- 5. TAMPILAN PENGATURAN AUTO SPAM & POSISI
+-- 6. TAMPILAN PENGATURAN SPAM & POSISI
 function ShowSpamMenu()
     local statusText = _G.KD_SpamRunning and "`2SEDANG BERJALAN``" or "`4BERHENTI (OFF)``"
     local tw = _G.KD_TargetWorld ~= "" and _G.KD_TargetWorld or "BELUM DIKUNCI"
+    local posText = (_G.KD_TargetX and _G.KD_TargetY) and ("X: " .. _G.KD_TargetX .. ", Y: " .. _G.KD_TargetY) or "BELUM DISET"
 
     local d = "set_default_color|`o\n" ..
               "add_label_with_icon|big|`wKD HUB - AUTO SPAM & POS GUARD``|left|11550|\n" ..
               "add_spacer|small|\n" ..
               "add_textbox|`9Status: " .. statusText .. "|left|\n" ..
-              "add_textbox|`oWorld Terkunci: `2" .. tw .. " `o| Pos: `2X: " .. tostring(_G.KD_TargetX) .. ", Y: " .. tostring(_G.KD_TargetY) .. "``|left|\n" ..
+              "add_textbox|`oWorld: `2" .. tw .. " `o| Pos Kunci: `2" .. posText .. "``|left|\n" ..
               "add_spacer|small|\n" ..
               "add_button|btn_grab_pos|[ AMBIL POSISI & WORLD OTOMATIS ]|noflags|0|0|\n" ..
               "add_textbox| |left|\n" ..
@@ -106,32 +130,32 @@ function ShowSpamMenu()
     SendVariantList({[0] = "OnDialogRequest", [1] = d, netid = -1})
 end
 
--- 6. LOGIKA AUTO SPAM, POS GUARD & ANTI-DC
+-- 7. THREAD EKSEKUSI AUTO SPAM, POS GUARD & AUTO RECONNECT
 function StartSpamLoop()
     if _G.KD_SpamRunning then return end
     _G.KD_SpamRunning = true
-    LogToConsole("`2[KD Group] `aAuto Spam & Pos Guard aktif! Tekan tombol Emote untuk STOP.")
+    LogToConsole("`2[KD Group] `aAuto Spam & Pos Guard Berjalan!")
 
     local function spamWorker()
         while _G.KD_SpamRunning do
             local currentWorld = GetCurrentWorldName()
 
-            -- A. Auto-Rejoin World jika DC / Terlempar
+            -- A. Auto-Rejoin jika keluar/DC dari World
             if _G.KD_TargetWorld ~= "" and currentWorld:upper() ~= _G.KD_TargetWorld:upper() then
-                LogToConsole("`4[KD Group] `oWorld tidak sesuai! Masuk kembali ke: " .. _G.KD_TargetWorld)
+                LogToConsole("`4[KD Group] `oTerlempar dari world! Menghubungkan ulang ke: " .. _G.KD_TargetWorld)
                 SendPacket(3, "action|join_request\nname|" .. _G.KD_TargetWorld .. "\ninvitedWorld|0")
                 SafeSleep(4000)
             else
-                -- B. Auto-Return ke Pos X, Y jika bergeser / dipukul
-                if _G.KD_TargetX > 0 and _G.KD_TargetY > 0 then
+                -- B. Pos Guard: Cek apakah karakter bergeser dari koordinat target
+                if _G.KD_TargetX and _G.KD_TargetY then
                     local myX, myY = GetCurrentPos()
                     if myX ~= _G.KD_TargetX or myY ~= _G.KD_TargetY then
                         SafeMove(_G.KD_TargetX, _G.KD_TargetY)
-                        SafeSleep(600)
+                        SafeSleep(800) -- Beri waktu karakter untuk melangkah kembali
                     end
                 end
 
-                -- C. Kirim Pesan Chat Spam
+                -- C. Kirim Pesan Chat
                 local msg = _G.KD_SpamText or "KD Group on Top!"
                 SendPacket(2, "action|input\n|text|" .. msg)
 
@@ -140,71 +164,71 @@ function StartSpamLoop()
                 SafeSleep(dly)
             end
         end
-        LogToConsole("`4[KD Group] `cAuto Spam telah berhenti.")
+        LogToConsole("`4[KD Group] `cAuto Spam telah dimatikan.")
     end
 
-    -- Eksekusi Thread dengan penanganan error
+    -- Eksekusi Thread
     if type(run_thread) == "function" then
         run_thread(spamWorker)
+    elseif type(make_thread) == "function" then
+        make_thread(spamWorker)
     elseif type(RunThread) == "function" then
         RunThread(spamWorker)
-    elseif type(thread) == "function" then
-        thread(spamWorker)
     else
         local co = coroutine.create(function()
             local ok, err = pcall(spamWorker)
             if not ok then
-                LogToConsole("`4[KD Error] Loop terhenti: " .. tostring(err))
+                LogToConsole("`4[KD Error] Loop error: " .. tostring(err))
             end
         end)
         coroutine.resume(co)
     end
 end
 
--- 7. HOOK PAKET (DETEKSI KLIK TOMBOL & TOMBOL EMOTE DI LAYAR)
+-- 8. HOOK PAKET INTERAKSI
 function KD_PacketHook(type, packet)
-    -- A. Deteksi Tekan Tombol Emote di layar HP untuk buka menu
+    -- Deteksi Emote Senyum untuk membuka menu
     if type == 2 and packet:find("action|action") and (packet:find("emote") or packet:find("cheer")) then
         ShowMainMenu()
         return true
     end
 
-    -- B. Cadangan Buka Menu via Chat (/kd, /menu, atau /cheer)
+    -- Perintah Chat Cadangan (/kd atau /menu)
     if type == 2 and packet:find("action|input") then
         local chat = packet:match("text|(/%w+)")
-        if chat == "/kd" or chat == "/menu" or chat == "/cheer" or chat == "/smile" then
+        if chat == "/kd" or chat == "/menu" then
             ShowMainMenu()
             return true
         end
     end
 
-    -- C. Respon Klik di Menu Utama (Hub)
+    -- Menu Utama Hub
     if type == 2 and packet:find("dialog_name|kd_hub") then
         if packet:find("buttonClicked|menu_spam") then
             ShowSpamMenu()
             return true
         elseif packet:find("buttonClicked|menu_bfg") or packet:find("buttonClicked|menu_casino") then
-            LogToConsole("`4[KD Group] `oFitur ini sedang disiapkan!")
+            LogToConsole("`4[KD Group] `oFitur ini sedang dalam pengerjaan!")
             ShowMainMenu()
             return true
         end
     end
 
-    -- D. Respon Klik di Menu Auto Spam
+    -- Menu Auto Spam
     if type == 2 and packet:find("dialog_name|kd_spam_menu") then
         local inputTxt = GetValue(packet, "cfg_text")
         local inputDly = GetValue(packet, "cfg_delay")
         if inputTxt and inputTxt ~= "" then _G.KD_SpamText = inputTxt end
         if inputDly and tonumber(inputDly) then _G.KD_SpamDelay = tonumber(inputDly) end
 
-        -- Ambil Posisi dan World Otomatis
+        -- Tangkap Posisi & World Otomatis
         if packet:find("buttonClicked|btn_grab_pos") then
             local wx, wy = GetCurrentPos()
             local ww = GetCurrentWorldName()
             _G.KD_TargetWorld = ww
             _G.KD_TargetX = wx
             _G.KD_TargetY = wy
-            LogToConsole("`2[KD Group] `aPosisi Terkunci! World: " .. ww .. " (X: " .. wx .. ", Y: " .. wy .. ")")
+            LogToConsole("`2[KD Group] `aPosisi Terkunci! World: `w" .. ww .. " `a(X: `w" .. wx .. "`a, Y: `w" .. wy .. "`a)")
             ShowSpamMenu()
             return true
         end
@@ -222,7 +246,7 @@ function KD_PacketHook(type, packet)
             return true
         end
 
-        -- Kembali
+        -- Back
         if packet:find("buttonClicked|btn_back_hub") then
             ShowMainMenu()
             return true
