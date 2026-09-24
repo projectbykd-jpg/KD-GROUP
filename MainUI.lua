@@ -1,44 +1,69 @@
--- Variabel Global agar bisa dibaca oleh script AutoSpam nanti
-_G.KD_SpamText = "Jual Script Premium GTPS di KD Group!"
-local selectedScript = "AUTO SPAM"
+-- ==========================================
+-- PROJECT BY KD - MAIN HUB (BOTHAX COMPATIBLE)
+-- ==========================================
 
-function OnDraw()
-    -- Tema Warna KD Group
-    ImGui.PushStyleColor(ImGuiCol_WindowBg, 0.05, 0.05, 0.08, 0.95)
-    ImGui.PushStyleColor(ImGuiCol_TitleBg, 0.0, 0.3, 0.7, 1.0)
-    ImGui.PushStyleColor(ImGuiCol_Button, 0.9, 0.5, 0.0, 1.0)
-    
-    ImGui.Begin("🚀 PROJECT BY KD - PREMIUM HUB", true)
-    ImGui.Columns(2)
-    ImGui.SetColumnWidth(0, 200)
-    
-    ImGui.TextColored(1.0, 0.6, 0.0, 1.0, "🔍 MENU SCRIPT")
-    ImGui.Separator()
-    
-    if ImGui.Selectable("AUTO SPAM", selectedScript == "AUTO SPAM") then selectedScript = "AUTO SPAM" end
-    
-    ImGui.NextColumn()
-    
-    ImGui.TextColored(0.0, 0.8, 1.0, 1.0, "⚙️ SETTING: " .. selectedScript)
-    ImGui.Separator()
-    
-    if selectedScript == "AUTO SPAM" then
-        ImGui.Text("Spam Text:")
-        -- Input UI yang akan mengubah variabel teks secara real-time
-        _G.KD_SpamText = ImGui.InputText("##spamteks", _G.KD_SpamText)
-        
-        ImGui.Spacing()
-        
-        -- INI KUNCINYA: AutoSpam.lua HANYA dipanggil kalau tombol ini diklik
-        if ImGui.Button("▶ START SPAM", 150, 30) then
-            LogToConsole("`2[KD Group] `9Mengunduh dan menjalankan modul Auto Spam...")
-            local scriptUrl = "https://raw.githubusercontent.com/projectbykd-jpg/KD-GROUP/main/Scripts/AutoSpam.lua"
-            load(MakeRequest(scriptUrl, "GET").content)()
-        end
+-- 1. Fungsi Parser untuk membaca isi data dialog
+function GetDialogValue(packet, key)
+    for line in packet:gmatch("[^\r\n]+") do
+        local k, v = line:match("^([^|]+)|(.*)$")
+        if k == key then return v end
     end
-    
-    ImGui.End()
-    ImGui.PopStyleColor(3)
+    return nil
 end
 
-AddCallback("UI_Render", "OnDraw", OnDraw)
+-- 2. Fungsi untuk memunculkan Panel Pengaturan KD Group
+function ShowKDMenu()
+    local defaultText = _G.KD_SpamText or "Beli Script Premium hanya di KD Group!"
+    local defaultDelay = _G.KD_SpamDelay or "3500"
+
+    local dialog = "set_default_color|`o\n" ..
+                   "add_label_with_icon|big|`wPROJECT BY KD - SCRIPT HUB``|left|11550|\n" ..
+                   "add_spacer|small|\n" ..
+                   "add_textbox|`9Silakan atur konfigurasi Auto Spam di bawah ini:|left|\n" ..
+                   "add_text_input|cfg_text|Pesan Spam:|" .. defaultText .. "|50|\n" ..
+                   "add_text_input|cfg_delay|Delay (ms):|" .. defaultDelay .. "|5|\n" ..
+                   "add_spacer|small|\n" ..
+                   "end_dialog|kd_menu|Batal|▶ JALANKAN SPAM|\n" ..
+                   "add_quick_exit|"
+
+    local var = {}
+    var[0] = "OnDialogRequest"
+    var[1] = dialog
+    var.netid = -1
+    SendVariantList(var)
+end
+
+-- 3. Fungsi Hook Penangkap Klik & Input dari Panel
+local function OnSendPacketHook(type, packet)
+    if type == 2 and packet:find("dialog_name|kd_menu") then
+        -- Jika tombol "▶ JALANKAN SPAM" ditekan
+        if packet:find("buttonClicked|▶ JALANKAN SPAM") then
+            -- Ambil data yang diketik user di form
+            local customText = GetDialogValue(packet, "cfg_text")
+            local customDelay = tonumber(GetDialogValue(packet, "cfg_delay")) or 3500
+
+            -- Simpan ke variabel global
+            _G.KD_SpamText = customText
+            _G.KD_SpamDelay = customDelay
+
+            LogToConsole("`2[KD Group] `9Mengunduh modul AutoSpam dari GitHub...")
+
+            -- Eksekusi file modular dari GitHub kamu
+            local url = "https://raw.githubusercontent.com/projectbykd-jpg/KD-GROUP/main/Scripts/AutoSpam.lua"
+            load(MakeRequest(url, "GET").content)()
+
+            return true -- Blokir paket agar server GT tidak bingung
+        end
+    end
+    return false
+end
+
+-- 4. Pasang Hook sesuai sistem Bothax
+if type(hook) == "function" then
+    hook("sendpacket", OnSendPacketHook)
+elseif type(AddHook) == "function" then
+    AddHook("OnSendPacket", "KD_Hook", OnSendPacketHook)
+end
+
+-- Tampilkan panelnya di layar HP
+ShowKDMenu()
