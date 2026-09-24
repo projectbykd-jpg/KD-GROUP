@@ -1,13 +1,17 @@
-LogToConsole("`2[KD Group] `9Auto Spam Aktif!")
+-- ==========================================
+-- KD GROUP - MODULE: AUTO SPAM
+-- ==========================================
+LogToConsole("`2[KD Group] `aAuto Spam Berjalan Sukses!")
 
-function StartSpamming()
+-- Mengambil teks dan delay yang diset oleh user di dialog
+local textToSend = _G.KD_SpamText or "KD Group on Top!"
+local delayTime = _G.KD_SpamDelay or 3500
+
+function RunSpam()
     while true do
-        -- Mengambil teks dari inputan UI (_G.KD_SpamText)
-        local textToSend = _G.KD_SpamText or "Spam default"
-        
         SendPacket(2, "action|input\n|text|" .. textToSend)
-        Sleep(3500) 
+        Sleep(delayTime)
     end
 end
 
-StartSpamming()
+RunSpam()
