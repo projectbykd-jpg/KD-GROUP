@@ -8,12 +8,30 @@ _G.KD_SpamText = _G.KD_SpamText or "Beli Script Premium di KD Group!"
 _G.KD_SpamDelay = _G.KD_SpamDelay or 3500
 
 -- Fungsi Membaca Isi Input Dialog
-function GetValue(packet, key)
-    for line in packet:gmatch("[^\r\n]+") do
-        local k, v = line:match("^([^|]+)|(.*)$")
-        if k == key then return v end
+-- Hook pendeteksi klik karakter sendiri (Self-Wrench) & Chat /kd
+function KD_PacketHook(type, packet)
+    -- 1. Deteksi Wrench Diri Sendiri (Tinggal klik karaktermu sendiri)
+    if type == 2 and packet:find("action|wrench") then
+        local targetNetID = tonumber(packet:match("netid|(%d+)"))
+        
+        -- Cek apakah yang di-wrench adalah diri sendiri
+        if targetNetID and GetLocal and GetLocal().netid == targetNetID then
+            ShowMainMenu()
+            return true -- Blok dialog wrench bawaan game
+        end
     end
-    return nil
+
+    -- 2. Cadangan: Buka lewat Chat /kd
+    if type == 2 and packet:find("action|input") then
+        local chat = packet:match("text|(/%w+)")
+        if chat == "/kd" or chat == "/menu" then
+            ShowMainMenu()
+            return true
+        end
+    end
+
+    -- Logika tombol dialog tetap berjalan seperti biasa di bawah sini...
+    return false
 end
 
 -- 1. TAMPILAN MENU UTAMA (LIST SCRIPT)
